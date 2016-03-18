@@ -37,6 +37,9 @@ public class Main
         // 功能实现入口
         String resultStr = Route.searchRoute(graphContent, conditionContent);
 
+        if (resultStr == null)
+        	resultStr = "NA";
+        System.out.println(resultStr);
         // 写入输出文件
         FileUtil.write(resultFilePath, resultStr, false);
 
