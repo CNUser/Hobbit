@@ -29,17 +29,15 @@ public class Main
 
         // 读取输入文件
         String graphContent = FileUtil.read(graphFilePath, null);        
-//        System.out.println(graphContent);
 
         String conditionContent = FileUtil.read(conditionFilePath, null);
-//        System.out.println(conditionFilePath);
         
         // 功能实现入口
         String resultStr = Route.searchRoute(graphContent, conditionContent);
 
         if (resultStr == null)
         	resultStr = "NA";
-        System.out.println(resultStr);
+        System.out.println("main: " + resultStr);
         // 写入输出文件
         FileUtil.write(resultFilePath, resultStr, false);
 
