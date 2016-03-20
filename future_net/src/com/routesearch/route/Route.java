@@ -18,7 +18,14 @@ public final class Route
 	private static int destination = -1;                             // 汇点
 	private List<Integer> includingSet = new LinkedList<Integer>();  // 中间点集合
 	private EdgeBean[][] graphMatrix;                                 // 邻接矩阵
+	private EdgeBean[][] replicaOfgraphMatrix;
 	private List<Integer> result = new LinkedList<Integer>();
+	private int[] path = null;                            // 记录路径上对应节点的前驱节点
+	private int[] s = null;        // 记录已经走过的点, 1表示已经走过，0表示未走过
+	private List<Integer> passedSet = new LinkedList<Integer>();  // 记录已经走过的中间点
+	private int[] distance = null; // 记录从源点到其他点的距离	
+	private static int lowcost = 0;
+	private String goodPath = null;
 	
 	
 	
@@ -43,9 +50,37 @@ public final class Route
     	
     	route.handleCondition(condition);
     	
-    	route.Dijkstra(source, destination);
+    	route.distance = new int[nodes];
+    	route.path = new int[nodes];
+    	route.s = new int[nodes];
     	
-        return route.Dijkstra(source, destination);
+    	for (int i = 0; i < nodes; i++)
+    	{
+    		route.path[i] = -1;
+    		route.s[i] = 0;
+    	}
+    	
+    	route.path[route.source] = -2;
+    	
+    	String edgetrace = null;
+		try {
+			edgetrace = route.Dijkstra(route.graphMatrix, route.s, source, destination, route.includingSet, route.passedSet);
+		} catch (CloneNotSupportedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    	
+    	System.out.println(lowcost);
+    	
+    	String nodetrace = edgetrace;
+    	
+    	nodetrace += "\n";
+    	for (Integer i : route.result)
+    		nodetrace += "" + i + " ";
+    	
+    	System.out.println(route.goodPath);
+    	
+        return edgetrace;
     }
     
     /** 
@@ -55,7 +90,9 @@ public final class Route
      */
     private int initGraph(String graphContent)
     {
-    	int rows = graphContent.length() / 8;
+    	String[] eachLine = graphContent.split("\n");
+    	int rows = eachLine.length;
+    	
     	int[][] temp = new int[4][rows];
     	int index = 0;
     	int max = 0;
@@ -64,13 +101,11 @@ public final class Route
     	// temp第 0 行存储编号，第 1 行存储源点，第 2 行存储汇点，第 3 行存储权重
     	for (int i = 0; i < rows; i++)
     	{
-    		// 每一行的起始地址
-    		index = i * 8;
-    		
-    		temp[0][i] = Integer.parseInt(graphContent.substring(index, index+1));
-    		temp[1][i] = Integer.parseInt(graphContent.substring(index + 2, index + 3));
-    		temp[2][i] = Integer.parseInt(graphContent.substring(index + 4, index + 5));
-    		temp[3][i] = Integer.parseInt(graphContent.substring(index + 6, index + 7));
+    		String[] value = eachLine[i].split(",");
+    		temp[0][i] = Integer.parseInt(value[0]);
+    		temp[1][i] = Integer.parseInt(value[1]);
+    		temp[2][i] = Integer.parseInt(value[2]);
+    		temp[3][i] = Integer.parseInt(value[3]);
     		
     		// 求出最大节点编号
     		max = Integer.max(max, temp[1][i]);
@@ -87,6 +122,15 @@ public final class Route
     		}
     	}
     	
+    	replicaOfgraphMatrix = new EdgeBean[max+1][max+1];
+    	for (int i = 0; i <= max; i++)
+    	{
+    		for (int j = 0; j <= max; j++)
+    		{
+    			replicaOfgraphMatrix[i][j] = new EdgeBean();
+    		}
+    	}
+    	
     	// 为边赋值
     	for (int i = 0; i < temp[0].length; i++)
     	{    		 
@@ -95,18 +139,21 @@ public final class Route
     		
     		graphMatrix[src][des].setWeight(temp[3][i]);
     		graphMatrix[src][des].setNumber(temp[0][i]);
+    		
+    		replicaOfgraphMatrix[src][des].setWeight(temp[3][i]);
+    		replicaOfgraphMatrix[src][des].setNumber(temp[0][i]);
     	}
     	
     	// test code
-    	for (int i = 0; i <= max; i++)
-    	{
-    		for (int j = 0; j <= max; j++)
-    		{
-    			System.out.print(graphMatrix[i][j].weight + "  ");
-    		}
-    		
-    		System.out.println();
-    	} 
+//    	for (int i = 0; i <= max; i++)
+//    	{
+//    		for (int j = 0; j <= max; j++)
+//    		{
+//    			System.out.print(graphMatrix[i][j].weight + "  ");
+//    		}
+//    		
+//    		System.out.println();
+//    	} 
     	
     	return (max + 1);    	    	
     }    
@@ -115,40 +162,66 @@ public final class Route
      * @param graph
      * @param n count of node
      * @param condition contain start node, end node, including set
+     * @throws CloneNotSupportedException 
      */
-    private String Dijkstra(int src, int des)
+    private String Dijkstra(EdgeBean[][] graph, int[] s, int src, int des, List<Integer> including, List<Integer> passed) 
+    		throws CloneNotSupportedException
     {
+    	
+    	EdgeBean[][] graphMatrix = new EdgeBean[nodes][nodes];
+    	List<Integer> includingList = new LinkedList<Integer>();
+    	List<Integer> passedList = new LinkedList<Integer>();
+    	int[] store = new int[nodes];
+    	
+    	int[] distance = new int[nodes];
     	int begin = src;
     	int end = des;
-    	int[] distance = new int[nodes]; // 记录从源点到其他点的距离
-    	int[] path = new int[nodes];     // 记录路径上对应节点的前驱节点
-    	int[] s = new int[nodes];        // 记录已经走过的点, 1表示已经走过，0表示未走过
-    	List<Integer> passedSet = new LinkedList<Integer>();  // 记录已经走过的中间点
+    	
     	int minDis = INFINITY;
-    	int cntOfgoThrough = includingSet.size();
+//    	int cntOfgoThrough = passedSet.size();
     	int u;
-    	boolean tag;
+    	boolean tag = true;   
+    	
+    	
+    	// 深克隆
+    	for (int i = 0; i < nodes; i++)
+    		for (int j = 0; j < nodes; j++)
+    		{
+    			graphMatrix[i][j] = (EdgeBean) graph[i][j].clone();
+    		}
+    	
+    	for (int i = 0; i < nodes; i++)
+    	{
+    		store[i] = s[i];
+    	}
+    	
+    	for (int i = 0; i < including.size(); i++)
+    		includingList.add(including.get(i));
+    	
+    	for (int i = 0; i < passed.size(); i++)
+    		passedList.add(passed.get(i));
     	
     	u = -1;
     	
     	for (int i = 0; i < nodes; i++)
     	{
-    		distance[i] = graphMatrix[source][i].getWeight();
-    		s[i] = 0;
+    		distance[i] = graphMatrix[begin][i].getWeight();
+//    		s[i] = 0;
     		
     		if (distance[i] < INFINITY)
     		{
     			path[i] = begin;
     		}
-    		else
-    		{
-    			path[i] = -1;
-    		}
+//    		else if (path[i] != -1)
+    //		{
+    //			path[i] = -1;
+   // 		}
     	}
     	
-    	s[begin] = 1;
-    	path[begin] = -2;
+    	store[begin] = 1;
+//    	path[begin] = -2;
     	
+    	// 入度改为 0
     	for (int l = 0; l < nodes; l++)
     	{
     		graphMatrix[l][begin].setWeight(INFINITY);
@@ -159,44 +232,52 @@ public final class Route
     		minDis = INFINITY;
     		u = -1;
     		
-    		// 首先判断中间节点可不可达，可达则另 u 为中间节点
+    		// 首先判断中间节点可不可达，可达则令 u 为中间节点
     		// 不可达选取不在 s 中且具有最小距离的顶点 u
-    		tag = true;
-    		for (int j = 0; j < includingSet.size(); j++)
+    		
+     		for (int j = 0; j < includingList.size(); j++)
     		{
-    			if (s[includingSet.get(j)] == 0 && 
-    					distance[includingSet.get(j)] < minDis)
+    			tag = true;
+    			if (store[includingList.get(j)] == 0 && 
+    					distance[includingList.get(j)] < minDis)
     			{
-    				u = includingSet.get(j);
-    				minDis = distance[includingSet.get(j)];
+//    				u = includingList.get(j);
+//    				minDis = distance[includingList.get(j)];
     				tag = false;
-    				passedSet.add(includingSet.get(j));
-    				includingSet.remove(j);
-    				break;
+    				passedList.add(includingList.get(j));
+    				includingList.remove(j);
+    				Dijkstra(graphMatrix, store, passedList.get(passedList.size() - 1), des, includingList, passedList);
     			}
     		}
     		
-    		if (tag)
+    		if (true)
     		{
     			for (int j = 0; j < nodes; j++)
         		{
-        			if (cntOfgoThrough != passedSet.size() && s[j] == 0 && 
+    				// 未经过所有中间节点时不能先走汇点
+        			if (includingList.size() > 0 && store[j] == 0 && 
         					distance[j] < minDis && j != end)
         			{
         				u = j;
         				minDis = distance[j];
         			}
-        			else if (cntOfgoThrough == passedSet.size() && s[j] == 0 && 
-        					 	distance[j] < minDis)
+        			else if (includingList.size() == 0 && store[j] == 0 && distance[j] < minDis)
         			{
         				u = j;
         				minDis = distance[j];
         			}
+    				
+    				
         		}    			
     		}    		
     		
+//    		if (!result.isEmpty())
+//    			break;
+    		if (u == -1)
+    			continue;
     		// 顶点 u 加入 s 中
-    		s[u] = 1;
+    		store[u] = 1;   		
+    		
     		
     		// 对邻接矩阵进行修改
     		for (int i1 = 0; i1 < nodes; i1++)
@@ -207,7 +288,7 @@ public final class Route
     		// 修改不在 s 中的顶点的距离
     		for (int j = 0; j < nodes; j++)
     		{
-    			if (s[j] == 0)
+    			if (store[j] == 0)
     			{
     				if ( (graphMatrix[u][j].getWeight() < INFINITY) &&
     						(distance[u] + graphMatrix[u][j].getWeight() < distance[j]) )
@@ -218,51 +299,68 @@ public final class Route
     			}
     		}
     		
-    		if (u == end)
-    		{
-    			break;
-    		}
+//    		if (u == end)
+//    		{
+//    			break;
+//    		}
     		
     	}
     	
-    	return getPath(distance, path, s, src);
+    	return getPath(distance, path, store, src);
     }
     
     private String getPath(int dis[], int path[], int s[], int src)
     {
+    	int tempcost = 0;
+    	
     	if (s[destination] == 0)
     		return null;
-    	Ppath(path, destination, src);
     	
-    	String track;
+    	result.clear();
+    	Ppath(path, destination);
+    	
+    	
+    	
+    	String track = "";
     	
     	if (result.isEmpty())
     		return null;
     	
-    	track = "" + graphMatrix[src][result.get(0)].getNumber() + "|";
-    	
+//    	track = "" + graphMatrix[src][result.get(0)].getNumber() + "|";
     	
     	for (int i = 0; i < result.size() - 1; i++)
     	{
     		track += graphMatrix[result.get(i)][result.get(i + 1)].getNumber() + "|";
+    		tempcost += replicaOfgraphMatrix[result.get(i)][result.get(i + 1)].getWeight();
     	}
-    	
+    	tempcost += replicaOfgraphMatrix[result.get(result.size() - 1)][destination].getWeight();
     	track += graphMatrix[result.get(result.size() - 1)][destination].getNumber();
+    	
+    	if (lowcost == 0)
+    	{
+    		goodPath = track;
+    		lowcost = tempcost;
+    	}
+    	else if (lowcost != 0 && lowcost > tempcost)
+    	{
+    		goodPath = track;
+    		lowcost = tempcost;
+    	}
     	
     	return track;
     }
     
-    private void Ppath(int path[], int i, int src)
+    private void Ppath(int path[], int des)
     {
     	int k;
     	
-    	k = path[i];
-    	if (k == src)
+    	k = path[des];
+    	if (k == -2)
     	{
     		return ;
     	}
     	
-    	Ppath(path, k, src);
+    	Ppath(path, k);
     	
     	result.add(k);
     }
@@ -281,7 +379,7 @@ public final class Route
     		if (i == passVertex.length - 1)
     		{
     	    	// 因为passVertex中最后一个字符串的结束符是'\n'
-    	    	includingSet.add(Integer.parseInt(passVertex[i].substring(0, passVertex.length - 1)));
+    	    	includingSet.add(Integer.parseInt(passVertex[i].substring(0, passVertex[i].length() - 1)));
     		}
     		else
     		{
@@ -294,7 +392,7 @@ public final class Route
 
 }
 
-class EdgeBean
+class EdgeBean implements Cloneable
 {
 	public int weight;
 	public int no;
@@ -323,5 +421,15 @@ class EdgeBean
 	public int getNumber()
 	{
 		return this.no;
+	}
+	
+	public Object clone() throws CloneNotSupportedException
+	{
+		EdgeBean obj = new EdgeBean();
+		
+		obj.setNumber(this.no);
+		obj.setWeight(this.weight);
+		
+		return obj;		
 	}
 }
